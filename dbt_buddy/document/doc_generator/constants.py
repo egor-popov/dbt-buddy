@@ -14,5 +14,5 @@ GPT_MODEL_URI: str = "gpt://b1g37h2qq9mp0ud4j8kn/yandexgpt"
 GPT_TEMPERATURE: float = 0.3
 GPT_MAX_TOKENS: str = "8000"
 GPT_ANSWER_TEMPLATE: str = """
-    [{'column_name': <название колонки>, 'description': <описание колонки>, 'possible_values': <возможные значения>},..]
+    [{"column_name": <название колонки>, "description": <описание колонки>, "possible_values": <возможные значения>},..]
 """
