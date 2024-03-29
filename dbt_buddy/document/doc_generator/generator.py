@@ -80,6 +80,35 @@ class DBTDocGenerator:
             logging.error("Given model doesn't exist")
             sys.exit()
 
+    def _generate_completion_prompt(self, sql: str) -> dict:
+        """
+        Generate a completion prompt for YandexGPT.
+
+        :param sql: The SQL query to generate documentation for.
+        :returns: The completion prompt.
+        """
+        catalog_id: str = self._get_dotenv_secret(constants.DOTENV_CATALOG_ID_NAME)
+        gpt_completion_prompt: dict = {
+            "modelUri": constants.GPT_MODEL_URI.format(catalog_id=catalog_id),
+            "completionOptions": {
+                "stream": False,
+                "temperature": constants.GPT_TEMPERATURE,
+                "maxTokens": constants.GPT_MAX_TOKENS,
+            },
+            "messages": [
+                {
+                    "role": "system",
+                    "text": f"""
+                        Напиши документацию для следующей dbt-модели: {sql}
+                        Опиши значения колонок четко и ясно с использованием технического русского языка.
+                        Опиши только колонки в блоке основного SELECT, игнорируй CTE.
+                        Оформи ответ в виде JSON, используя шаблон {constants.GPT_ANSWER_TEMPLATE}.
+                    """,
+                }
+            ],
+        }
+        return gpt_completion_prompt
+
     def _get_doc_completion(self, sql: str) -> str:
         """
         Get documentation completion from YandexGPT formed as a raw text.
@@ -107,9 +136,7 @@ class DBTDocGenerator:
             )
         return result.text
 
-    def _fill_yaml_with_column_description(
-        self, compiled_yaml: dict, documentation: list
-    ) -> str:
+    def _fill_yaml_with_column_description(self, compiled_yaml: dict, documentation: list) -> str:
         """
         Fill the YAML with column descriptions.
 
@@ -130,9 +157,7 @@ class DBTDocGenerator:
                             ):
                                 possible_values_list = ", ".join(possible_values_raw)
                             possible_values = (
-                                " Возможные значения: " + possible_values_list
-                                if possible_values_list != ""
-                                else ""
+                                " Возможные значения: " + possible_values_list if possible_values_list != "" else ""
                             )
                         column["description"] = item["description"] + possible_values
         return yaml.dump(compiled_yaml, allow_unicode=True, sort_keys=False)
@@ -178,35 +203,6 @@ class DBTDocGenerator:
         else:
             logging.info(f"Here is AI-documentation for dbt-model {self.model}:")
             print(documented_yaml)
-
-    @staticmethod
-    def _generate_completion_prompt(sql: str) -> dict:
-        """
-        Generate a completion prompt for YandexGPT.
-
-        :param sql: The SQL query to generate documentation for.
-        :returns: The completion prompt.
-        """
-        gpt_completion_prompt: dict = {
-            "modelUri": constants.GPT_MODEL_URI,
-            "completionOptions": {
-                "stream": False,
-                "temperature": constants.GPT_TEMPERATURE,
-                "maxTokens": constants.GPT_MAX_TOKENS,
-            },
-            "messages": [
-                {
-                    "role": "system",
-                    "text": f"""
-                        Напиши документацию для следующей dbt-модели: {sql}
-                        Опиши значения колонок четко и ясно с использованием технического русского языка.
-                        Опиши только колонки в блоке основного SELECT, игнорируй CTE.
-                        Оформи ответ в виде JSON, используя шаблон {constants.GPT_ANSWER_TEMPLATE}.
-                    """,
-                }
-            ],
-        }
-        return gpt_completion_prompt
 
     @staticmethod
     def _parse_gpt_answer(raw_answer: str) -> List[Dict]:
