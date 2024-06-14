@@ -23,6 +23,7 @@ var/
 *.egg
 *.mypy_cache/
 logs/
+.env
 .venv
 poetry.lock
 

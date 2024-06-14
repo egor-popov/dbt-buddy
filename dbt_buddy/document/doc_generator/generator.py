@@ -99,7 +99,7 @@ class DBTDocGenerator:
                 {
                     "role": "system",
                     "text": f"""
-                        Напиши документацию для следующей dbt-модели: {sql}
+                        Напиши документацию для следующей dbt-модели: {sql.strip()}
                         Опиши значения колонок четко и ясно с использованием технического русского языка.
                         Опиши только колонки в блоке основного SELECT, игнорируй CTE.
                         Оформи ответ в виде JSON, используя шаблон {constants.GPT_ANSWER_TEMPLATE}.
@@ -165,7 +165,9 @@ class DBTDocGenerator:
     def run(self):
         """Main function to compile dbt model, generate documentation, and fill YAML."""
         profiles_dir_arg: str = f"--profiles-dir={self.profiles_dir}"
+        project_dir_arg: str = f"--project-dir={self.project_dir}"
         model_compile_args: list = [
+            project_dir_arg,
             profiles_dir_arg,
             "--select",
             self.model,
