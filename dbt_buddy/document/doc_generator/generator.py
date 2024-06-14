@@ -88,6 +88,10 @@ class DBTDocGenerator:
         :returns: The completion prompt.
         """
         catalog_id: str = self._get_dotenv_secret(constants.DOTENV_CATALOG_ID_NAME)
+        example_values: str = ',"possible_values": <возможные значения>' if self.examples else ""
+        gpt_answer_template: str = f"""
+[{{"column_name": <название колонки>,"description": <описание колонки>{example_values}}}..]
+"""
         gpt_completion_prompt: dict = {
             "modelUri": constants.GPT_MODEL_URI.format(catalog_id=catalog_id),
             "completionOptions": {
@@ -99,11 +103,11 @@ class DBTDocGenerator:
                 {
                     "role": "system",
                     "text": f"""
-                        Напиши документацию для следующей dbt-модели: {sql.strip()}
-                        Опиши значения колонок четко и ясно с использованием технического русского языка.
-                        Опиши только колонки в блоке основного SELECT, игнорируй CTE.
-                        Оформи ответ в виде JSON, используя шаблон {constants.GPT_ANSWER_TEMPLATE}.
-                    """,
+Напиши документацию для следующей dbt-модели: {sql.strip()}
+Опиши значения колонок четко и ясно с использованием технического русского языка.
+Опиши только колонки в блоке основного SELECT, игнорируй CTE.
+Оформи ответ в виде JSON, используя шаблон {gpt_answer_template}.
+""",
                 }
             ],
         }
