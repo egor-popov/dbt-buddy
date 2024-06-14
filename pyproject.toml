@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dbt-buddy"
-version = "0.0.2"
+version = "0.0.3"
 description = "AI-based documentation for dbt-models"
 authors = ["Egor Popov <Egor.POPOV@uni.rest>"]
 keywords = ["dbt", "LLM", "YandexGPT", "AI-documentation"]
