@@ -4,6 +4,18 @@
 
 ## Installation
 
+### Option 1: Install from PyPI
+
+```bash
+pip install dbt-buddy
+# or, if you prefer uv
+uv pip install dbt-buddy
+```
+
+This installs the `buddy` CLI.
+
+### Option 2: Install from source
+
 1. Install uv if you haven't already:
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
