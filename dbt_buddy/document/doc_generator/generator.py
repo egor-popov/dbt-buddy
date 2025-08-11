@@ -1,16 +1,17 @@
 import json
 import logging
 import os
-import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-import requests
 import yaml
 from dbt.cli.main import dbtRunner, dbtRunnerResult
 from dbt.contracts.graph.nodes import ModelNode
 from dotenv import get_key
+from yandex_cloud_ml_sdk import YCloudML
+from yandex_cloud_ml_sdk._models.completions.model import GPTModel
+from yandex_cloud_ml_sdk._models.completions.result import GPTModelResult
 
 from dbt_buddy.document.doc_generator import constants
 
@@ -80,37 +81,34 @@ class DBTDocGenerator:
             logging.error("Given model doesn't exist")
             sys.exit()
 
-    def _generate_completion_prompt(self, sql: str) -> dict:
+    def _generate_completion_prompt(self, sql: str) -> list:
         """
         Generate a completion prompt for YandexGPT.
 
         :param sql: The SQL query to generate documentation for.
         :returns: The completion prompt.
         """
-        catalog_id: str = self._get_dotenv_secret(constants.DOTENV_CATALOG_ID_NAME)
-        example_values: str = ',"possible_values": <возможные значения>' if self.examples else ""
-        gpt_answer_template: str = f"""
-[{{"column_name": <название колонки>,"description": <описание колонки>{example_values}}}..]
+        if self.examples:
+            example_values: str = """
+В блок description добавь примеры возможных значений там, где эти значения указаны явно: например, в блоке CASE.
 """
-        gpt_completion_prompt: dict = {
-            "modelUri": constants.GPT_MODEL_URI.format(catalog_id=catalog_id),
-            "completionOptions": {
-                "stream": False,
-                "temperature": constants.GPT_TEMPERATURE,
-                "maxTokens": constants.GPT_MAX_TOKENS,
-            },
-            "messages": [
-                {
-                    "role": "system",
-                    "text": f"""
+        else:
+            example_values: str = ""
+        gpt_answer_template: str = """
+[{{"column_name": <название колонки>,"description": <описание колонки>}}..]
+"""
+        gpt_completion_prompt: list = [
+            {
+                "role": "system",
+                "text": f"""
 Напиши документацию для следующей dbt-модели: {sql.strip()}
 Опиши значения колонок четко и ясно с использованием технического русского языка.
 Опиши только колонки в блоке основного SELECT, игнорируй CTE.
 Оформи ответ в виде JSON, используя шаблон {gpt_answer_template}.
+{example_values}
 """,
-                }
-            ],
-        }
+            }
+        ]
         return gpt_completion_prompt
 
     def _get_doc_completion(self, sql: str) -> str:
@@ -120,51 +118,42 @@ class DBTDocGenerator:
         :param sql: The SQL query to generate documentation for.
         :returns: The result of the completion.
         """
-        headers: dict = {
-            "Content-Type": "application/json",
-            "Authorization": f"Api-Key {self._get_dotenv_secret(constants.DOTENV_API_KEY_NAME)}",
-        }
-        prompt: dict = self._generate_completion_prompt(sql)
-        result: requests.Response = requests.post(constants.GPT_BASE_URL, headers=headers, data=json.dumps(prompt))
-        if result.status_code != 200:
+        sdk = YCloudML(
+            folder_id=self._get_dotenv_secret(constants.DOTENV_CATALOG_ID_NAME),
+            auth=self._get_dotenv_secret(constants.DOTENV_API_KEY_NAME),
+        )
+        model: GPTModel = sdk.models.completions("yandexgpt").configure(
+            temperature=constants.GPT_TEMPERATURE,
+            max_tokens=constants.GPT_MAX_TOKENS,
+            response_format=constants.GPT_RESPONSE_FORMAT,
+        )
+        prompt: list = self._generate_completion_prompt(sql)
+        result: GPTModelResult = model.run(prompt)
+        if result.status != 3:
             logging.error(f"Yandex API message: {result.text}")
             sys.exit()
         if self.verbose:
             logging.info("Here is the raw answer from YandexGPT API:")
-            print(
-                json.dumps(
-                    json.loads(result.text)["result"]["alternatives"][0]["message"],
-                    indent=2,
-                    ensure_ascii=False,
-                )
-            )
+            logging.info(result.text)
         return result.text
 
-    def _fill_yaml_with_column_description(self, compiled_yaml: dict, documentation: list) -> str:
+    def _generate_documented_yaml(self, json_answer: list) -> str:
         """
-        Fill the YAML with column descriptions.
+        Generate a documented YAML.
 
-        :param compiled_yaml: The compiled YAML.
-        :param documentation: The documentation to fill in.
-        :returns: The filled YAML as a string.
+        :param json_answer: The GPT answer in JSON format.
+        :returns: The documented YAML.
         """
-        for column in compiled_yaml["models"][0]["columns"]:
-            for item in documentation:
-                if isinstance(item, dict):
-                    if column["name"] == item.get("column_name"):
-                        possible_values: str = ""
-                        if self.examples:
-                            possible_values_list: str = ""
-                            possible_values_raw: Union[List, None] = item.get("possible_values")
-                            if isinstance(possible_values_raw, list) and all(
-                                isinstance(i, str) for i in possible_values_raw
-                            ):
-                                possible_values_list = ", ".join(possible_values_raw)
-                            possible_values = (
-                                " Возможные значения: " + possible_values_list if possible_values_list != "" else ""
-                            )
-                        column["description"] = item["description"] + possible_values
-        return yaml.dump(compiled_yaml, allow_unicode=True, sort_keys=False)
+        dbt_yaml: dict = {
+            "version": 2,
+            "models": [
+                {
+                    "name": self.model,
+                    "columns": [{"name": col["column_name"], "description": col["description"]} for col in json_answer],
+                }
+            ],
+        }
+        return yaml.dump(dbt_yaml, allow_unicode=True, sort_keys=False)
 
     def run(self):
         """Main function to compile dbt model, generate documentation, and fill YAML."""
@@ -175,11 +164,6 @@ class DBTDocGenerator:
             profiles_dir_arg,
             "--select",
             self.model,
-        ]
-        yaml_compile_args: list = [
-            profiles_dir_arg,
-            "--inline",
-            constants.DBT_CODEGEN_MACRO.format(model=self.model),
         ]
 
         logging.info(f"Start compiling dbt-model {self.model}...")
@@ -192,15 +176,11 @@ class DBTDocGenerator:
             compiled_model: str = self._get_dbt_cli_results(model_compile_args).compiled_code
         logging.info(f"dbt-model {self.model} compiled.")
 
-        logging.info(f"Start compiling YAML-template for model {self.model}...")
-        compiled_yaml: str = self._get_dbt_cli_results(yaml_compile_args).compiled_code
-        logging.info(f"YAML-template for model {self.model} compiled.")
-
         logging.info("Start generating documentation with YandexGPT...")
         result: str = self._get_doc_completion(compiled_model)
         json_answer: list = self._parse_gpt_answer(result)
-        yaml_dict: dict = yaml.safe_load(compiled_yaml)
-        documented_yaml: str = self._fill_yaml_with_column_description(yaml_dict, json_answer)
+
+        documented_yaml: str = self._generate_documented_yaml(json_answer=json_answer)
         if self.save:
             file_name_full: str = os.path.join(self.project_dir, file_name)
             with open(file_name_full, "w") as file:
@@ -220,9 +200,7 @@ class DBTDocGenerator:
         """
         json_answer: list = []
         try:
-            answer: str = json.loads(raw_answer)["result"]["alternatives"][0]["message"]["text"]
-            raw_json_structure: str = max(re.findall(r"(\[.*\])", answer, re.DOTALL))
-            json_answer: List[Dict] = json.loads(raw_json_structure)
+            json_answer: List[Dict] = json.loads(raw_answer)
         except (ValueError, KeyError) as e:
             logging.error(f"Error parsing GPT answer: {e}")
         return json_answer
