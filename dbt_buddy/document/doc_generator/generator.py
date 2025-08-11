@@ -97,16 +97,18 @@ class DBTDocGenerator:
         gpt_answer_template: str = """
 [{{"column_name": <название колонки>,"description": <описание колонки>}}..]
 """
-        gpt_completion_prompt: list = [{
-            "role": "system",
-            "text": f"""
+        gpt_completion_prompt: list = [
+            {
+                "role": "system",
+                "text": f"""
 Напиши документацию для следующей dbt-модели: {sql.strip()}
 Опиши значения колонок четко и ясно с использованием технического русского языка.
 Опиши только колонки в блоке основного SELECT, игнорируй CTE.
 Оформи ответ в виде JSON, используя шаблон {gpt_answer_template}.
 {example_values}
 """,
-        }]
+            }
+        ]
         return gpt_completion_prompt
 
     def _get_doc_completion(self, sql: str) -> str:
@@ -118,12 +120,12 @@ class DBTDocGenerator:
         """
         sdk = YCloudML(
             folder_id=self._get_dotenv_secret(constants.DOTENV_CATALOG_ID_NAME),
-            auth=self._get_dotenv_secret(constants.DOTENV_API_KEY_NAME)
+            auth=self._get_dotenv_secret(constants.DOTENV_API_KEY_NAME),
         )
         model: GPTModel = sdk.models.completions("yandexgpt").configure(
             temperature=constants.GPT_TEMPERATURE,
             max_tokens=constants.GPT_MAX_TOKENS,
-            response_format=constants.GPT_RESPONSE_FORMAT
+            response_format=constants.GPT_RESPONSE_FORMAT,
         )
         prompt: list = self._generate_completion_prompt(sql)
         result: GPTModelResult = model.run(prompt)
@@ -147,15 +149,9 @@ class DBTDocGenerator:
             "models": [
                 {
                     "name": self.model,
-                    "columns": [
-                        {
-                            "name": col["column_name"],
-                            "description": col["description"]
-                        }
-                        for col in json_answer
-                    ]
+                    "columns": [{"name": col["column_name"], "description": col["description"]} for col in json_answer],
                 }
-            ]
+            ],
         }
         return yaml.dump(dbt_yaml, allow_unicode=True, sort_keys=False)
 

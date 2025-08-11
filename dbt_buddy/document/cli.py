@@ -7,7 +7,13 @@ from dbt_buddy.document.doc_generator.generator import DBTDocGenerator
 
 
 @click.command()
-@click.option("-m", "--model", type=str, required=True, help="The name of existing dbt-model.",)
+@click.option(
+    "-m",
+    "--model",
+    type=str,
+    required=True,
+    help="The name of existing dbt-model.",
+)
 @click.option(
     "--project-dir",
     type=click.Path(),
@@ -20,9 +26,24 @@ from dbt_buddy.document.doc_generator.generator import DBTDocGenerator
     default=None,
     help="Path to directory with profiles.yml. Default is the current working directory.",
 )
-@click.option("-e", "--examples", is_flag=True, help="Whether to include AI-generated possible values for the field.",)
-@click.option("-s", "--save", is_flag=True, help="Whether to save generated documentation to YAML-file.",)
-@click.option("-v", "--verbose", is_flag=True, help="Whether to print a raw answer from YandexGPT to the console.",)
+@click.option(
+    "-e",
+    "--examples",
+    is_flag=True,
+    help="Whether to include AI-generated possible values for the field.",
+)
+@click.option(
+    "-s",
+    "--save",
+    is_flag=True,
+    help="Whether to save generated documentation to YAML-file.",
+)
+@click.option(
+    "-v",
+    "--verbose",
+    is_flag=True,
+    help="Whether to print a raw answer from YandexGPT to the console.",
+)
 def document(
     model: str,
     examples: bool,
